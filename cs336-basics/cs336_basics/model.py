@@ -94,6 +94,7 @@ class BasicsTransformerLM(nn.Module):
         d_ff: int,
         attn_pdrop: Optional[float] = None,
         residual_pdrop: Optional[float] = None,
+        **kwargs
     ):
         # Store the model configuration for serialization / deserialization
         self.config = {
