@@ -64,6 +64,12 @@ def backward_pass():
     loss.backward()
     torch.cuda.synchronize()
 
+def timer(run: Callable):
+    t1 = time.time()
+    result = run()
+    t2 = time.time()
+    return t2-t1, result
+
 iter_num = 0
 # warm up
 forward_times = np.zeros(config.benchmarking_iters)
@@ -75,15 +81,8 @@ for _ in range(config.warmup_iters):
     optimizer.step()
 
 for i in range(config.benchmarking_iters):
-    t1 = time.time()
-    loss = forward_pass()
-    t2 = time.time()
-    forward_times[i] = t2 - t1
-
-    t1 = time.time()
-    backward_pass()
-    t2 = time.time()
-    backward_times[i] = t2 - t1
+    forward_times[i], loss = timer(forward_pass)
+    backward_times[i], _ = timer(backward_pass)
 
     clip_gradient(model.parameters(), 1.0)
     optimizer.step()
