@@ -1,5 +1,6 @@
+# Zitong
+out/FlameGraph
 log/**
-scripts/**
 wandb/**
 # Byte-compiled / optimized / DLL files
 __pycache__/

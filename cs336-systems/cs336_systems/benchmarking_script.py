@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field, asdict
-from typing import Optional, Callable, List
+from typing import Optional, Callable
 from transformers import HfArgumentParser
 import torch
+from contextlib import nullcontext
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 import numpy as np
@@ -23,6 +24,8 @@ class BenchMarkingConfig:
     benchmarking_iters: Optional[int] = field(default=5)
     warmup_iters: Optional[int] = field(default=1)
     wandb_run_name: Optional[str] = field(default='None')
+    mixed_precision: Optional[bool] = field(default=False)
+    use_rms_norm: Optional[bool] = field(default=True)
     # fixed configs
     wandb_project: str = 'cs336-assignment2-systems'
     context_length: int = 128
@@ -44,12 +47,20 @@ logging.info(f'Benchmarking with config: {asdict(config)}')
 
 # generate random dataset for bench marking
 x = torch.randint(0, config.vocab_size, (config.batch_size, config.context_length))
+x = x.to(config.device)
 y = torch.randint(0, config.vocab_size, (config.batch_size, config.context_length))
+y = y.to(config.device)
 
 # initializing a rando model
 model = BasicsTransformerLM(**asdict(config))
+model = model.to(config.device)
 # loading the optimizer
 optimizer = AdamW(model.parameters())
+# initialize the training context
+if config.mixed_precision:
+    train_context = torch.amp.autocast(device_type=config.device, dtype=torch.bfloat16)
+else:
+    train_context = nullcontext()
 
 def forward_pass():
     torch.cuda.synchronize()
@@ -75,17 +86,18 @@ iter_num = 0
 forward_times = np.zeros(config.benchmarking_iters)
 backward_times = np.zeros(config.benchmarking_iters)
 for _ in range(config.warmup_iters):
-    loss = forward_pass()
-    backward_pass()
-    clip_gradient(model.parameters(), 1.0)
-    optimizer.step()
+    with train_context:
+        loss = forward_pass()
+        backward_pass()
+        clip_gradient(model.parameters(), 1.0)
+        optimizer.step()
 
 for i in range(config.benchmarking_iters):
-    forward_times[i], loss = timer(forward_pass)
-    backward_times[i], _ = timer(backward_pass)
-
-    clip_gradient(model.parameters(), 1.0)
-    optimizer.step()
+    with train_context:
+        forward_times[i], loss = timer(forward_pass)
+        backward_times[i], _ = timer(backward_pass)
+        clip_gradient(model.parameters(), 1.0)
+        optimizer.step()
 
 
 # benchmarking
