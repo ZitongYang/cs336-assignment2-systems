@@ -11,7 +11,7 @@
 
 cd ~/cs336-assignment2-systems
 
-python cs336-systems/cs336_systems/benchmarking_script.py \
+python cs336-systems/cs336_systems/benchmarking_lm.py \
     --warmup_iters=5 \
     --wandb_run_name "benchmarking_small_mixed" \
     --mixed_precision=True \
@@ -20,7 +20,7 @@ python cs336-systems/cs336_systems/benchmarking_script.py \
     --num_layers 12 \
     --num_heads 12
 
-python cs336-systems/cs336_systems/benchmarking_script.py \
+python cs336-systems/cs336_systems/benchmarking_lm.py \
     --warmup_iters=5 \
     --wandb_run_name "benchmarking_medium_mixed" \
     --mixed_precision=True \
@@ -29,7 +29,7 @@ python cs336-systems/cs336_systems/benchmarking_script.py \
     --num_layers 24 \
     --num_heads 16
 
-python cs336-systems/cs336_systems/benchmarking_script.py \
+python cs336-systems/cs336_systems/benchmarking_lm.py \
     --warmup_iters=5 \
     --wandb_run_name "benchmarking_large_mixed" \
     --mixed_precision=True \
@@ -38,7 +38,7 @@ python cs336-systems/cs336_systems/benchmarking_script.py \
     --num_layers 36 \
     --num_heads 20
 
-python cs336-systems/cs336_systems/benchmarking_script.py \
+python cs336-systems/cs336_systems/benchmarking_lm.py \
     --warmup_iters=5 \
     --wandb_run_name "benchmarking_xl_mixed" \
     --mixed_precision=True \
@@ -47,7 +47,7 @@ python cs336-systems/cs336_systems/benchmarking_script.py \
     --num_layers 48 \
     --num_heads 25
 
-python cs336-systems/cs336_systems/benchmarking_script.py \
+python cs336-systems/cs336_systems/benchmarking_lm.py \
     --warmup_iters=5 \
     --wandb_run_name "benchmarking_2p7b_mixed" \
     --mixed_precision=True \

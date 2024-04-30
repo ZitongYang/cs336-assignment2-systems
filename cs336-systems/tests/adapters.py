@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Type
-
+from cs336_systems.rmsnorm import RMSNormAutogradFuncTorch, RMSNormAutogradFuncTriton
 import torch
 
 
@@ -16,7 +16,7 @@ def get_rmsnorm_autograd_function_pytorch() -> Type:
         A class object (not an instance of the class)
     """
     # For example: return MyRMSNormAutogradFunctionClass
-    raise NotImplementedError
+    return RMSNormAutogradFuncTorch
 
 
 def get_rmsnorm_autograd_function_triton() -> Type:
@@ -32,7 +32,7 @@ def get_rmsnorm_autograd_function_triton() -> Type:
         A class object (not an instance of the class)
     """
     # For example: return MyTritonRMSNormAutogradFunctionClass
-    raise NotImplementedError
+    return RMSNormAutogradFuncTriton
 
 
 def rmsnorm_backward_g_pytorch(

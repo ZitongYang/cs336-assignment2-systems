@@ -26,6 +26,7 @@ class BenchMarkingConfig:
     wandb_run_name: Optional[str] = field(default='None')
     mixed_precision: Optional[bool] = field(default=False)
     use_rms_norm: Optional[bool] = field(default=True)
+    use_rms_norm_triton: Optional[bool] = field(default=False)
     # fixed configs
     wandb_project: str = 'cs336-assignment2-systems'
     context_length: int = 128

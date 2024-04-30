@@ -13,6 +13,8 @@ import torch.nn.functional as F
 
 from .nn_utils import softmax
 
+from cs336_systems.rmsnorm import RMSNormAutogradFuncTriton
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +54,15 @@ class RMSNorm(nn.Module):
         rms = torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
         x = x * rms
         return self.weight * x
+
+class RMSNormTriton(nn.Module):
+    def __init__(self, hidden_size: int):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.hidden_size = hidden_size
+    
+    def forward(self, x):
+        return RMSNormAutogradFuncTriton.apply(x, self.weight)
 
 
 class BasicsTransformerLM(nn.Module):
@@ -95,6 +106,7 @@ class BasicsTransformerLM(nn.Module):
         attn_pdrop: Optional[float] = None,
         residual_pdrop: Optional[float] = None,
         use_rms_norm: bool = True,
+        use_rms_norm_triton: bool = False,
         **kwargs
     ):
         # Store the model configuration for serialization / deserialization
@@ -116,12 +128,18 @@ class BasicsTransformerLM(nn.Module):
                     d_ff=d_ff,
                     attn_pdrop=attn_pdrop,
                     residual_pdrop=residual_pdrop,
-                    use_rms_norm=use_rms_norm
+                    use_rms_norm=use_rms_norm,
+                    use_rms_norm_triton=use_rms_norm_triton,
                 )
                 for _ in range(num_layers)
             ]
         )
-        NormalizationLayer = RMSNorm if use_rms_norm else nn.LayerNorm
+        if use_rms_norm_triton:
+            NormalizationLayer = RMSNormTriton
+        elif use_rms_norm:
+            NormalizationLayer = RMSNorm
+        else:
+            NormalizationLayer = nn.LayerNorm
         self.ln_final = NormalizationLayer(d_model)
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
         # Tie the weights, since the paper mentions that "we share the same weight
@@ -291,10 +309,16 @@ class TransformerBlock(nn.Module):
         d_ff: int,
         attn_pdrop: Optional[float] = None,
         residual_pdrop: Optional[float] = None,
-        use_rms_norm: bool = True
+        use_rms_norm: bool = True,
+        use_rms_norm_triton: bool = False,
     ):
         super().__init__()
-        NormalizationLayer = RMSNorm if use_rms_norm else nn.LayerNorm
+        if use_rms_norm_triton:
+            NormalizationLayer = RMSNormTriton
+        elif use_rms_norm:
+            NormalizationLayer = RMSNorm
+        else:
+            NormalizationLayer = nn.LayerNorm
         self.attn = CausalMultiHeadSelfAttention(
             d_model=d_model,
             num_heads=num_heads,
