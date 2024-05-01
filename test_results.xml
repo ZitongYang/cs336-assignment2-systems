@@ -1,0 +1,1097 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="10" skipped="0" tests="18" time="34.305" timestamp="2024-05-01T09:18:09.169924" hostname="ad12a3ca-01.cloud.together.ai"><testcase classname="tests.test_ddp" name="test_DistributedDataParallelCPU[0.0016-ToyModel]" time="2.992"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py&quot;, line 76, in _test_DistributedDataParallelCPU&#10;    ddp_model = get_ddp_bucketed(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 137, in get_ddp_bucketed&#10;    raise NotImplementedError&#10;NotImplementedError">bucket_size_mb = 0.0016, model_class = &lt;class 'tests.common.ToyModel'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    @pytest.mark.parametrize("bucket_size_mb", [0.0016, 0.0001, 0.01])
+    def test_DistributedDataParallelCPU(bucket_size_mb, model_class):
+        """
+        bucket_size_mb 0.0016 is designed to test the case with 2 buckets (one bucket
+        has 2 parameter tensors, the other has 2).
+    
+        bucket_size_mb 0.0001 is designed to test the case with 3 buckets (each bucket
+        has one parameter tensors).
+    
+        bucket_size_mb 0.01 is designed to test the case with 1 buckets (containing
+        3 parameter tensors).
+        """
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelCPU,
+            args=(world_size, bucket_size_mb, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x1456824ab940&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py", line 76, in _test_DistributedDataParallelCPU
+E           ddp_model = get_ddp_bucketed(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 137, in get_ddp_bucketed
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp" name="test_DistributedDataParallelCPU[0.0016-ToyModelWithTiedWeights]" time="3.848"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py&quot;, line 76, in _test_DistributedDataParallelCPU&#10;    ddp_model = get_ddp_bucketed(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 137, in get_ddp_bucketed&#10;    raise NotImplementedError&#10;NotImplementedError">bucket_size_mb = 0.0016, model_class = &lt;class 'tests.common.ToyModelWithTiedWeights'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    @pytest.mark.parametrize("bucket_size_mb", [0.0016, 0.0001, 0.01])
+    def test_DistributedDataParallelCPU(bucket_size_mb, model_class):
+        """
+        bucket_size_mb 0.0016 is designed to test the case with 2 buckets (one bucket
+        has 2 parameter tensors, the other has 2).
+    
+        bucket_size_mb 0.0001 is designed to test the case with 3 buckets (each bucket
+        has one parameter tensors).
+    
+        bucket_size_mb 0.01 is designed to test the case with 1 buckets (containing
+        3 parameter tensors).
+        """
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelCPU,
+            args=(world_size, bucket_size_mb, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x1456824a77c0&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py", line 76, in _test_DistributedDataParallelCPU
+E           ddp_model = get_ddp_bucketed(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 137, in get_ddp_bucketed
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp" name="test_DistributedDataParallelCPU[0.0001-ToyModel]" time="2.860"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py&quot;, line 76, in _test_DistributedDataParallelCPU&#10;    ddp_model = get_ddp_bucketed(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 137, in get_ddp_bucketed&#10;    raise NotImplementedError&#10;NotImplementedError">bucket_size_mb = 0.0001, model_class = &lt;class 'tests.common.ToyModel'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    @pytest.mark.parametrize("bucket_size_mb", [0.0016, 0.0001, 0.01])
+    def test_DistributedDataParallelCPU(bucket_size_mb, model_class):
+        """
+        bucket_size_mb 0.0016 is designed to test the case with 2 buckets (one bucket
+        has 2 parameter tensors, the other has 2).
+    
+        bucket_size_mb 0.0001 is designed to test the case with 3 buckets (each bucket
+        has one parameter tensors).
+    
+        bucket_size_mb 0.01 is designed to test the case with 1 buckets (containing
+        3 parameter tensors).
+        """
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelCPU,
+            args=(world_size, bucket_size_mb, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x14568246f5b0&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py", line 76, in _test_DistributedDataParallelCPU
+E           ddp_model = get_ddp_bucketed(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 137, in get_ddp_bucketed
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp" name="test_DistributedDataParallelCPU[0.0001-ToyModelWithTiedWeights]" time="2.909"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py&quot;, line 76, in _test_DistributedDataParallelCPU&#10;    ddp_model = get_ddp_bucketed(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 137, in get_ddp_bucketed&#10;    raise NotImplementedError&#10;NotImplementedError">bucket_size_mb = 0.0001, model_class = &lt;class 'tests.common.ToyModelWithTiedWeights'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    @pytest.mark.parametrize("bucket_size_mb", [0.0016, 0.0001, 0.01])
+    def test_DistributedDataParallelCPU(bucket_size_mb, model_class):
+        """
+        bucket_size_mb 0.0016 is designed to test the case with 2 buckets (one bucket
+        has 2 parameter tensors, the other has 2).
+    
+        bucket_size_mb 0.0001 is designed to test the case with 3 buckets (each bucket
+        has one parameter tensors).
+    
+        bucket_size_mb 0.01 is designed to test the case with 1 buckets (containing
+        3 parameter tensors).
+        """
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelCPU,
+            args=(world_size, bucket_size_mb, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x1456824aa110&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py", line 76, in _test_DistributedDataParallelCPU
+E           ddp_model = get_ddp_bucketed(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 137, in get_ddp_bucketed
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp" name="test_DistributedDataParallelCPU[0.01-ToyModel]" time="2.818"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py&quot;, line 76, in _test_DistributedDataParallelCPU&#10;    ddp_model = get_ddp_bucketed(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 137, in get_ddp_bucketed&#10;    raise NotImplementedError&#10;NotImplementedError">bucket_size_mb = 0.01, model_class = &lt;class 'tests.common.ToyModel'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    @pytest.mark.parametrize("bucket_size_mb", [0.0016, 0.0001, 0.01])
+    def test_DistributedDataParallelCPU(bucket_size_mb, model_class):
+        """
+        bucket_size_mb 0.0016 is designed to test the case with 2 buckets (one bucket
+        has 2 parameter tensors, the other has 2).
+    
+        bucket_size_mb 0.0001 is designed to test the case with 3 buckets (each bucket
+        has one parameter tensors).
+    
+        bucket_size_mb 0.01 is designed to test the case with 1 buckets (containing
+        3 parameter tensors).
+        """
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelCPU,
+            args=(world_size, bucket_size_mb, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x14568231fd60&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py", line 76, in _test_DistributedDataParallelCPU
+E           ddp_model = get_ddp_bucketed(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 137, in get_ddp_bucketed
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp" name="test_DistributedDataParallelCPU[0.01-ToyModelWithTiedWeights]" time="2.906"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py&quot;, line 76, in _test_DistributedDataParallelCPU&#10;    ddp_model = get_ddp_bucketed(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 137, in get_ddp_bucketed&#10;    raise NotImplementedError&#10;NotImplementedError">bucket_size_mb = 0.01, model_class = &lt;class 'tests.common.ToyModelWithTiedWeights'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    @pytest.mark.parametrize("bucket_size_mb", [0.0016, 0.0001, 0.01])
+    def test_DistributedDataParallelCPU(bucket_size_mb, model_class):
+        """
+        bucket_size_mb 0.0016 is designed to test the case with 2 buckets (one bucket
+        has 2 parameter tensors, the other has 2).
+    
+        bucket_size_mb 0.0001 is designed to test the case with 3 buckets (each bucket
+        has one parameter tensors).
+    
+        bucket_size_mb 0.01 is designed to test the case with 1 buckets (containing
+        3 parameter tensors).
+        """
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelCPU,
+            args=(world_size, bucket_size_mb, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x145682506500&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp.py", line 76, in _test_DistributedDataParallelCPU
+E           ddp_model = get_ddp_bucketed(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 137, in get_ddp_bucketed
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp_individual_parameters" name="test_DistributedDataParallelIndividualParameters[ToyModel]" time="2.833"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp_individual_parameters.py&quot;, line 61, in _test_DistributedDataParallelIndividualParameters&#10;    ddp_model = get_ddp_individual_parameters(ddp_base)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 99, in get_ddp_individual_parameters&#10;    raise NotImplementedError&#10;NotImplementedError">model_class = &lt;class 'tests.common.ToyModel'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    def test_DistributedDataParallelIndividualParameters(model_class):
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelIndividualParameters,
+            args=(world_size, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp_individual_parameters.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x1456824a8610&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp_individual_parameters.py", line 61, in _test_DistributedDataParallelIndividualParameters
+E           ddp_model = get_ddp_individual_parameters(ddp_base)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 99, in get_ddp_individual_parameters
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_ddp_individual_parameters" name="test_DistributedDataParallelIndividualParameters[ToyModelWithTiedWeights]" time="2.655"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp_individual_parameters.py&quot;, line 61, in _test_DistributedDataParallelIndividualParameters&#10;    ddp_model = get_ddp_individual_parameters(ddp_base)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 99, in get_ddp_individual_parameters&#10;    raise NotImplementedError&#10;NotImplementedError">model_class = &lt;class 'tests.common.ToyModelWithTiedWeights'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    def test_DistributedDataParallelIndividualParameters(model_class):
+        world_size = 2
+&gt;       mp.spawn(
+            _test_DistributedDataParallelIndividualParameters,
+            args=(world_size, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_ddp_individual_parameters.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x145682338df0&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_ddp_individual_parameters.py", line 61, in _test_DistributedDataParallelIndividualParameters
+E           ddp_model = get_ddp_individual_parameters(ddp_base)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 99, in get_ddp_individual_parameters
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_forward_pass_pytorch" time="0.005" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_forward_pass_triton" time="0.818" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_backward_x_pytorch" time="0.522" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_backward_g_pytorch" time="0.001" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_backward_x_triton" time="0.037" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_backward_g_triton" time="0.001" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_autograd_pytorch_forward_backward" time="0.001" /><testcase classname="tests.test_rmsnorm" name="test_rmsnorm_autograd_triton_forward_backward" time="0.002" /><testcase classname="tests.test_sharded_optimizer" name="test_sharded_optimizer[ToyModel]" time="3.474"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_sharded_optimizer.py&quot;, line 48, in _test_sharded_optimizer&#10;    sharded_optimizer = get_sharded_optimizer(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 190, in get_sharded_optimizer&#10;    raise NotImplementedError&#10;NotImplementedError">model_class = &lt;class 'tests.common.ToyModel'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    def test_sharded_optimizer(model_class):
+        world_size = 2
+&gt;       mp.spawn(
+            _test_sharded_optimizer,
+            args=(world_size, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_sharded_optimizer.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x14541ab88fd0&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_sharded_optimizer.py", line 48, in _test_sharded_optimizer
+E           sharded_optimizer = get_sharded_optimizer(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 190, in get_sharded_optimizer
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase><testcase classname="tests.test_sharded_optimizer" name="test_sharded_optimizer[ToyModelWithTiedWeights]" time="3.318"><failure message="torch.multiprocessing.spawn.ProcessRaisedException: &#10;&#10;-- Process 1 terminated with the following error:&#10;Traceback (most recent call last):&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py&quot;, line 68, in _wrap&#10;    fn(i, *args)&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_sharded_optimizer.py&quot;, line 48, in _test_sharded_optimizer&#10;    sharded_optimizer = get_sharded_optimizer(&#10;  File &quot;/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py&quot;, line 190, in get_sharded_optimizer&#10;    raise NotImplementedError&#10;NotImplementedError">model_class = &lt;class 'tests.common.ToyModelWithTiedWeights'&gt;
+
+    @pytest.mark.parametrize("model_class", [ToyModel, ToyModelWithTiedWeights])
+    def test_sharded_optimizer(model_class):
+        world_size = 2
+&gt;       mp.spawn(
+            _test_sharded_optimizer,
+            args=(world_size, model_class),
+            nprocs=world_size,
+            join=True,
+        )
+
+cs336-systems/tests/test_sharded_optimizer.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:241: in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method="spawn")
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:197: in start_processes
+    while not context.join():
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;torch.multiprocessing.spawn.ProcessContext object at 0x14541ab89300&gt;, timeout = None
+
+    def join(self, timeout=None):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes and raises an exception with the cause
+        of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long before giving up on waiting.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+    
+        # Assume failure. Terminate processes that are still alive.
+        for process in self.processes:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    
+        # There won't be an error on the queue if the process crashed.
+        failed_process = self.processes[error_index]
+        if self.error_queues[error_index].empty():
+            exitcode = self.processes[error_index].exitcode
+            if exitcode &lt; 0:
+                name = signal.Signals(-exitcode).name
+                raise ProcessExitedException(
+                    "process %d terminated with signal %s" % (error_index, name),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    "process %d terminated with exit code %d" % (error_index, exitcode),
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        original_trace = self.error_queues[error_index].get()
+        msg = "\n\n-- Process %d terminated with the following error:\n" % error_index
+        msg += original_trace
+&gt;       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/home/c-zitong/cs336-assignment2-systems/336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py", line 68, in _wrap
+E           fn(i, *args)
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/test_sharded_optimizer.py", line 48, in _test_sharded_optimizer
+E           sharded_optimizer = get_sharded_optimizer(
+E         File "/home/c-zitong/cs336-assignment2-systems/cs336-systems/tests/adapters.py", line 190, in get_sharded_optimizer
+E           raise NotImplementedError
+E       NotImplementedError
+
+336_a2_test_venv/lib/python3.10/site-packages/torch/multiprocessing/spawn.py:158: ProcessRaisedException</failure></testcase></testsuite></testsuites>

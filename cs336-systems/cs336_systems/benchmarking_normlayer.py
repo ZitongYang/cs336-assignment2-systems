@@ -41,6 +41,8 @@ def benchmark_normalization_layers():
         rms_norm = RMSNorm(dim).to(device)  # Assuming RMSNorm implemented similarly
         # Create Triton RMSNorm layer
         rms_norm_triton = RMSNormTriton(dim).to(device)
+        # Create compiled RMSNorm layer
+        rms_norm_compile = torch.compile(RMSNorm(dim).to(device))
 
 
         # Warm-up
@@ -48,15 +50,17 @@ def benchmark_normalization_layers():
             _ = layer_norm(x)
             _ = rms_norm(x)
             _ = rms_norm_triton(x)
+            _ = rms_norm_compile(x)
 
         
         # Time the forward passes
         layer_norm_time = time_forward_backward(layer_norm, x, dout)
         rms_norm_time = time_forward_backward(rms_norm, x, dout)
         rms_norm_triton_time = time_forward_backward(rms_norm_triton, x, dout)
+        rms_norm_compile_time = time_forward_backward(rms_norm_compile, x, dout)
         
 
-        results.append((dim, layer_norm_time, rms_norm_time, rms_norm_triton_time))
+        results.append((dim, layer_norm_time, rms_norm_time, rms_norm_triton_time, rms_norm_compile_time))
 
     return results
 
@@ -68,14 +72,9 @@ if __name__ == "__main__":
     # Execute benchmarking
     benchmark_results = benchmark_normalization_layers()
 
-    # # Print results in a markdown table format with only forward pass
-    # print("| Hidden Dimension  |LayerNorm Time (ms) |RMSNorm Time (ms)   |RMSNorm Triton Time (ms) |")
-    # print("|-------------------|--------------------|--------------------|-------------------------|")
-    # for dim, ln_time, rms_time, rms_triton_time in benchmark_results:
-    #     print(f"| {dim}              | {ln_time[0]:.2f}               | {rms_time[0]:.2f}               | {rms_triton_time[0]:.2f}                    |")
 
-    # Print results in a markdown table format with both forward and backward pass  
-    print("| Hidden Dimension  |LayerNorm Forward (ms) |RMSNorm Forward (ms) |RMSNorm Triton Forward (ms) |LayerNorm Backward (ms) |RMSNorm Backward (ms) |RMSNorm Triton Backward (ms) |")
-    print("|-------------------|------------------------|----------------------|---------------------------|-----------------------|---------------------|----------------------------|")
-    for dim, ln_time, rms_time, rms_triton_time in benchmark_results:
-        print(f"| {dim}              | {ln_time[0]:.2f}                   | {rms_time[0]:.2f}                 | {rms_triton_time[0]:.2f}                      | {ln_time[1]:.2f}               | {rms_time[1]:.2f}             | {rms_triton_time[1]:.2f}                      |")
+    # Print results in a markdown table format with both forward and backward pass
+    print("| Hidden Dimension  |LayerNorm Forward (ms) |RMSNorm Forward (ms) |RMSNorm Triton Forward (ms) |RMSNorm Compile Forward (ms) |LayerNorm Backward (ms) |RMSNorm Backward (ms) |RMSNorm Triton Backward (ms) |RMSNorm Compile Backward (ms) |")
+    print("|-------------------|------------------------|----------------------|---------------------------|-----------------------------|-----------------------|---------------------|----------------------------|------------------------------|")
+    for dim, ln_time, rms_time, rms_triton_time, rms_compile_time in benchmark_results:
+        print(f"| {dim}              | {ln_time[0]:.2f}                   | {rms_time[0]:.2f}                 | {rms_triton_time[0]:.2f}                      | {rms_compile_time[0]:.2f}                        | {ln_time[1]:.2f}               | {rms_time[1]:.2f}             | {rms_triton_time[1]:.2f}                      | {rms_compile_time[1]:.2f}                        |")

@@ -2,6 +2,7 @@
 out/FlameGraph
 log/**
 wandb/**
+**/*.pickle
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

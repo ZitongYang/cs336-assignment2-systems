@@ -54,6 +54,7 @@ y = y.to(config.device)
 # initializing a rando model
 model = BasicsTransformerLM(**asdict(config))
 model = model.to(config.device)
+model = torch.compile(model)
 # loading the optimizer
 optimizer = AdamW(model.parameters())
 # initialize the training context

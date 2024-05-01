@@ -13,12 +13,12 @@ import torch.nn.functional as F
 
 from .nn_utils import softmax
 
-from cs336_systems.rmsnorm import RMSNormTriton
+# from cs336_systems.rmsnorm import RMSNormTriton
 
 logger = logging.getLogger(__name__)
 
 
-class RMSNorm(nn.Module):
+class RMSNormTriton(nn.Module):
     """
     This module implements root mean square layer normalization, as
     described in Eq. 4 of https://arxiv.org/abs/1910.07467
