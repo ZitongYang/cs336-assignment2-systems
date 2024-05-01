@@ -31,7 +31,6 @@ def get_rmsnorm_autograd_function_triton() -> Type:
     Returns:
         A class object (not an instance of the class)
     """
-    # For example: return MyTritonRMSNormAutogradFunctionClass
     return RMSNormAutogradFuncTriton
 
 
@@ -53,7 +52,8 @@ def rmsnorm_backward_g_pytorch(
     Returns:
         Gradient of the loss with respect to g. Shape: (H,)
     """
-    raise NotImplementedError
+    output = RMSNormAutogradFuncTorch._jvp_g(grad_output, x, g)
+    return output
 
 
 def rmsnorm_backward_x_pytorch(
@@ -74,7 +74,8 @@ def rmsnorm_backward_x_pytorch(
     Returns:
         Gradient of the loss with respect to x. Shape: (*, H)
     """
-    raise NotImplementedError
+    output = RMSNormAutogradFuncTorch._jvp_x(grad_output, x, g)
+    return output
 
 
 def get_ddp_individual_parameters(module: torch.nn.Module) -> torch.nn.Module:
